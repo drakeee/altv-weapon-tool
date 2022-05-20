@@ -1,0 +1,3 @@
+[submodule "vendors/rapidxml"]
+	path = vendors/rapidxml
+	url = https://github.com/discord/rapidxml
