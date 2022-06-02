@@ -1,10 +1,12 @@
 #pragma once
 
+#include <string>
+
 class WindowManager;
 class WeaponTool
 {
 public:
-	WeaponTool();
+	WeaponTool(std::string title = "Weapon Tool");
 	~WeaponTool();
 
 	void Run();

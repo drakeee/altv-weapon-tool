@@ -11,6 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include_directories(
 	"${PROJECT_SOURCE_DIR}/src"
 	"${PROJECT_SOURCE_DIR}/vendors/rapidxml"
+	"${PROJECT_SOURCE_DIR}/vendors/pugixml/src"
 	"${PROJECT_SOURCE_DIR}/vendors/sdl2/include"
 	"${PROJECT_SOURCE_DIR}/vendors/imgui"
 )
@@ -23,6 +24,7 @@ file(
 	GLOB_RECURSE PROJECT_SOURCE_FILES
 	"./src/*.h" "./src/*.hpp" "./src/*.cpp"
 	"./vendors/imgui/*.h" "./vendors/imgui/*.hpp" "./vendors/imgui/*.cpp"
+	"./vendors/pugixml/src/*.h" "./vendors/pugixml/src/*.hpp" "./vendors/pugixml/src/*.cpp"
 )
 add_executable(${CMAKE_PROJECT_NAME} ${PROJECT_SOURCE_FILES})
 

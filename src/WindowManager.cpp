@@ -10,6 +10,7 @@
 
 #include <Layers/BackgroundLayer.hpp>
 #include <Layers/MenuBarLayer.hpp>
+#include <Layers/MainTabLayer.hpp>
 
 WindowManager::WindowManager(const char* title, int width, int height)
 {
@@ -19,7 +20,7 @@ WindowManager::WindowManager(const char* title, int width, int height)
 		return;
 	}
 
-	this->m_Window = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_BORDERLESS | SDL_WINDOW_RESIZABLE);
+	this->m_Window = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_BORDERLESS | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
 	if (!this->m_Window)
 	{
 		printf("Unable to create window. Error: %s\n", SDL_GetError());
@@ -49,15 +50,18 @@ WindowManager::WindowManager(const char* title, int width, int height)
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	io.Fonts->AddFontDefault();
 
-	this->m_InterFont = io.Fonts->AddFontFromFileTTF("fonts\\Inter-Medium.otf", 16);
+	this->m_InterFont = io.Fonts->AddFontFromFileTTF("fonts\\Inter-Medium.otf", 18);
+	this->m_InterFontBold = io.Fonts->AddFontFromFileTTF("fonts\\Inter-Bold.otf", 18);
+	this->m_InterFontExtraBold = io.Fonts->AddFontFromFileTTF("fonts\\Inter-ExtraBold.otf", 18);
 
-	ImFontConfig config;
-	config.MergeMode = false;
-	//config.GlyphMinAdvanceX = 16.0f; // Use if you want to make the icon monospaced
+	ImFontConfig awesomeConfig;
+	awesomeConfig.MergeMode = false;
+	//awesomeConfig.GlyphMinAdvanceX = 16.0f; // Use if you want to make the icon monospaced
 
 	static const ImWchar icon_ranges[] = { 0xf000, 0xf3ff, 0 };
-	this->m_AwesomeFont = io.Fonts->AddFontFromFileTTF("fonts\\fa-solid-900.ttf", 12, &config, icon_ranges);
+	this->m_AwesomeFont = io.Fonts->AddFontFromFileTTF("fonts\\fa-solid-900.ttf", 12, &awesomeConfig, icon_ranges);
 	//io.Fonts->Build();
 
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_ViewportsEnable;
@@ -68,8 +72,9 @@ WindowManager::WindowManager(const char* title, int width, int height)
 	ImGui_ImplSDL2_InitForSDLRenderer(this->m_Window, this->m_Renderer);
 	ImGui_ImplSDLRenderer_Init(this->m_Renderer);
 
-	this->AddLayer("Background", new BackgroundLayer);
-	this->AddLayer("MenuBar", new MenuBarLayer);
+	this->AddLayerComponent(new BackgroundLayer);
+	this->AddLayerComponent(new MenuBarLayer);
+	this->AddLayerComponent(new MainTabLayer);
 
 	for (auto& layer : this->m_LayerMap)
 		layer.second->Attach(this);
@@ -87,15 +92,30 @@ void WindowManager::Render()
 	{
 		switch (event.type)
 		{
+		case SDL_KEYUP:
+		case SDL_KEYDOWN:
+		{
+			if (!event.key.repeat)
+			{
+				if (event.key.type == SDL_KEYDOWN)
+				{
+					this->m_KeyPressed[event.key.keysym.scancode] = (event.key.type == SDL_KEYDOWN);
+					this->HandleKeyboard();
+				} else
+					this->m_KeyPressed.erase(event.key.keysym.scancode);
+			}
+
+			break;
+		}
 		case SDL_QUIT:
 		{
-			this->m_ShouldQuit = true;
+			this->CloseWindow();
 			break;
 		}
 		case SDL_WINDOWEVENT:
 		{
 			if (event.window.event == SDL_WINDOWEVENT_CLOSE)
-				this->m_ShouldQuit = true;
+				this->CloseWindow();
 
 			break;
 		}
@@ -122,25 +142,43 @@ void WindowManager::RenderLayers()
 	ImGui_ImplSDL2_NewFrame();
 	ImGui::NewFrame();
 
+	//this->m_InterFont->Scale = (16.0f/this->m_InterFont->FontSize);
+	ImGui::PushFont(this->m_InterFont);
+
 	for (auto& layer : this->m_LayerMap)
 		layer.second->Render(this);
 
-	//RenderMenu();
-
-	/*ImGui::Begin("Some Window");
-	ImGui::Text("Some text to show");
-	ImGui::End();*/
-
+	ImGui::PopFont();
 	ImGui::Render();
 	ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
 	SDL_RenderPresent(this->m_Renderer);
 }
 
+void WindowManager::HandleKeyboard()
+{
+	//Transform map keys into vectors of keys
+	std::vector<int> keys;
+	std::transform(this->m_KeyPressed.begin(), this->m_KeyPressed.end(), std::back_inserter(keys), [](const std::pair<SDL_Scancode, bool>& p) -> SDL_Scancode
+	{
+		return p.first;
+	});
+
+	//Check if we have a shortcut with given keys
+	std::map<std::vector<int>, ShortcutCallback>::iterator it = this->m_ShortcutMap.find(keys);
+	if (it != this->m_ShortcutMap.end())
+	{
+		//Execute shortcut's callback
+		it->second();
+	}
+}
+
 SDL_Texture* WindowManager::LoadTexture(std::string path)
 {
+	//Check if we have a renderer
 	if (!m_Renderer)
 		return nullptr;
 
+	//Load image from given path
 	SDL_Surface* imageSurface = IMG_Load(path.c_str());
 	if (!imageSurface)
 	{
@@ -148,22 +186,55 @@ SDL_Texture* WindowManager::LoadTexture(std::string path)
 		return nullptr;
 	}
 
+	//Convert surface into texture
 	SDL_Texture* returnTexture = SDL_CreateTextureFromSurface(this->m_Renderer, imageSurface);
 	SDL_FreeSurface(imageSurface);
 
+	//Return texture
 	return returnTexture;
+}
+
+void WindowManager::AddShortcut(std::initializer_list<int> shortcut, ShortcutCallback callback)
+{
+	this->m_ShortcutMap[shortcut] = callback;
 }
 
 void WindowManager::SetStyle()
 {
 	ImGuiStyle& style = ImGui::GetStyle();
 
-	style.Colors[ImGuiCol_MenuBarBg] = IMGUI_COLOR(0x29, 0x29, 0x29, 150);
-	style.Colors[ImGuiCol_Tab] = IMGUI_COLOR(60, 102, 145, 150);
-	style.Colors[ImGuiCol_TabActive] = IMGUI_COLOR(60, 102, 145, 255);
+	style.WindowRounding = 5.0f;
+	style.FrameRounding = 5.0f;
+	style.TabRounding = 5.0f;
+	style.PopupRounding = 5.0f;
+	/*style.ChildRounding = 0.0f;
+	style.FrameRounding = 0.0f;
+	style.GrabRounding = 0.0f;
+	style.PopupRounding = 0.0f;
+	style.ScrollbarRounding = 0.0f;*/
+
+	//style.Colors[ImGuiCol_MenuBarBg] = IMGUI_COLOR(0x29, 0x29, 0x29, 150);
+	style.Colors[ImGuiCol_MenuBarBg] = IMGUI_COLOR(0, 0, 0, 0);
+
+	style.Colors[ImGuiCol_Tab] = IMGUI_COLOR(0x00, 0x87, 0x36, 0xFF);
+	style.Colors[ImGuiCol_TabHovered] = IMGUI_COLOR(0x04, 0x78, 0x32, 0xFF);
+	//style.Colors[ImGuiCol_TabActive] = IMGUI_COLOR(0x03, 0x63, 0x29, 0xFF);
+	style.Colors[ImGuiCol_TabActive] = IMGUI_COLOR(0x00, 0x87, 0x36, 0xFF);
+
+	style.Colors[ImGuiCol_TableRowBg] = IMGUI_COLOR(255, 255, 255, 0);
+	style.Colors[ImGuiCol_TableRowBgAlt] = IMGUI_COLOR(255, 255, 255, 5);
+
+	style.Colors[ImGuiCol_FrameBg] = IMGUI_COLOR(30, 30, 30, 0);
+	style.Colors[ImGuiCol_FrameBgHovered] = IMGUI_COLOR(0, 0, 0, 255);
+
+	style.Colors[ImGuiCol_Header] = IMGUI_COLOR(0x00, 0x87, 0x36, 0xFF);
+	style.Colors[ImGuiCol_HeaderHovered] = IMGUI_COLOR(0x04, 0x78, 0x32, 0xFF);
+	style.Colors[ImGuiCol_HeaderActive] = IMGUI_COLOR(0x03, 0x63, 0x29, 0xFF);
+
+	style.Colors[ImGuiCol_ScrollbarBg] = IMGUI_COLOR(0, 0, 0, 0);
 }
 
-void WindowManager::AddLayer(std::string layerName, WindowLayer* layer)
+/*void WindowManager::AddLayer(std::string layerName, WindowLayer* layer)
 {
 	this->m_LayerMap[layerName] = layer;
 }
@@ -175,7 +246,7 @@ WindowLayer* WindowManager::GetLayer(std::string layerName)
 		return it->second;
 
 	return nullptr;
-}
+}*/
 
 int WindowManager::EventFilter(void* userdata, SDL_Event* event)
 {
@@ -194,8 +265,11 @@ SDL_HitTestResult WindowManager::HitTestCallback(SDL_Window* window, const SDL_P
 	int windowWidth, windowHeight;
 	SDL_GetWindowSize(window, &windowWidth, &windowHeight);
 
-	MenuBarLayer* menuBar = this->GetLayer<MenuBarLayer>("MenuBar");
+	MenuBarLayer* menuBar = this->GetLayerComponent<MenuBarLayer>();
+	if (menuBar == nullptr)
+		return SDL_HitTestResult::SDL_HITTEST_NORMAL;
 
+	//Check if we are dragging the menu bar
 	if (
 		(area->x > menuBar->m_MenuWidth) &&
 		(area->x < (windowWidth - (3 * menuBar->m_MenuHeight))) &&
@@ -205,6 +279,7 @@ SDL_HitTestResult WindowManager::HitTestCallback(SDL_Window* window, const SDL_P
 		return SDL_HitTestResult::SDL_HITTEST_DRAGGABLE;
 	}
 
+	//Check borders of the window for resizing
 	if (area->y > menuBar->m_MenuHeight)
 	{
 		if (area->x < resizePadding && (area->y < (windowHeight - cornerSize)))

@@ -1,8 +1,8 @@
 #include <WeaponTool.h>
 #include <WindowManager.h>
 
-WeaponTool::WeaponTool() :
-	m_WindowManager(new WindowManager("alt:V - Weapon Tool"))
+WeaponTool::WeaponTool(std::string title) :
+	m_WindowManager(new WindowManager(title.c_str()))
 {
 
 }

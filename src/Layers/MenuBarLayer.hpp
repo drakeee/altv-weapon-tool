@@ -17,13 +17,27 @@ public:
 	uint32_t m_MenuHeight = 0;
 	uint32_t m_MenuWidth = 0;
 
+	//char m_WindowTitle[32];
+
 	void Attach(WindowManager* manager) override
 	{
+		//sprintf_s(this->m_WindowTitle, sizeof(this->m_WindowTitle), "Weapon Tool");
+
 		this->m_LogoTexture = manager->LoadTexture(this->m_LogoPath);
 
 		SDL_Surface* tempSurface = IMG_Load(this->m_LogoPath.c_str());
 		SDL_SetWindowIcon(manager->m_Window, tempSurface);
 		SDL_FreeSurface(tempSurface);
+
+		manager->AddShortcut({ SDL_SCANCODE_LCTRL, SDL_SCANCODE_O }, [&]()
+			{
+				printf("S: %s\n", this->OpenFile().c_str());
+			});
+
+		manager->AddShortcut({ SDL_SCANCODE_LCTRL, SDL_SCANCODE_X }, [=]()
+			{
+				manager->m_ShouldQuit = true;
+			});
 	}
 
 	void PreRender(WindowManager* manager) override
@@ -36,41 +50,42 @@ public:
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 12.0f));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 
+		ImGui::SetNextWindowBgAlpha(0.0f);
 		if (ImGui::BeginMainMenuBar())
 		{
 			uint32_t menuBegin = ImGui::GetContentRegionAvail().x;
 			this->m_MenuHeight = ImGui::GetWindowSize().y;
 
-			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f));
-			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0));
-			ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0));
-
-			static const int logoSize = 32;
-			ImGui::SetCursorPosY(this->m_MenuHeight / 2 - logoSize / 2);
-			if (ImGui::ImageButton(this->m_LogoTexture, ImVec2(logoSize, logoSize)))
 			{
-				printf("alt:V\n");
-				std::string myUrl("https://altv.mp");
-				system(std::string("start " + myUrl).c_str());
+				ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f));
+				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0));
+				ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0));
+
+				static const int logoSize = 32;
+				ImGui::SetCursorPosY(this->m_MenuHeight / 2 - logoSize / 2);
+				if (ImGui::ImageButton(this->m_LogoTexture, ImVec2(logoSize, logoSize)))
+				{
+					printf("alt:V\n");
+					std::string myUrl("https://altv.mp");
+					system(std::string("start " + myUrl).c_str());
+				}
+				ImGui::PopStyleColor(3);
+				ImGui::PopStyleVar();
+				ImGui::SetCursorPosY(0);
 			}
-			ImGui::PopStyleColor(3);
-			ImGui::PopStyleVar();
-			ImGui::SetCursorPosY(0);
 
 			ImGui::Spacing();
-			//ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10, 10));
 			if (ImGui::BeginMenu("File"))
 			{
 				if (ImGui::MenuItem("Open", "Ctrl+O"))
 				{
-					//OpenFile();
+					this->OpenFile();
 				}
 				ImGui::Separator();
 				if (ImGui::MenuItem("Close", "Ctrl+X"))
 				{
-					//this->CloseWindow();
-					manager->m_ShouldQuit = true;
+					manager->CloseWindow();
 				}
 
 				ImGui::EndMenu();
@@ -78,14 +93,13 @@ public:
 			this->m_MenuWidth = (menuBegin - ImGui::GetContentRegionAvail().x);
 
 			{
-				char buffer[32];
-				sprintf_s(buffer, sizeof(buffer), "Weapon Tool");
-
+				ImGui::PushFont(manager->m_InterFontBold);
 				float win_width = ImGui::GetWindowSize().x;
-				float text_width = ImGui::CalcTextSize(buffer).x;
+				float text_width = ImGui::CalcTextSize(SDL_GetWindowTitle(manager->GetWindow())).x;
 
 				ImGui::SetCursorPosX(win_width / 2 - text_width / 2 - 10.0);
-				ImGui::Text(buffer);
+				ImGui::Text(SDL_GetWindowTitle(manager->GetWindow()));
+				ImGui::PopFont();
 			}
 
 			{
@@ -98,6 +112,7 @@ public:
 
 				ImGui::PushFont(manager->m_AwesomeFont);
 
+				ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
 				ImGui::SetCursorPosX(win_width - (buttonSize * 3));
 				if (ImGui::Button(u8"\uf2d1", ImVec2(buttonSize, buttonSize)))
 				{
@@ -116,9 +131,10 @@ public:
 
 				if (ImGui::Button(u8"\uf00d", ImVec2(buttonSize, buttonSize)))
 				{
-					manager->m_ShouldQuit = true;
+					manager->CloseWindow();
 				}
 
+				ImGui::PopStyleVar();
 				ImGui::PopFont();
 				ImGui::PopStyleColor(3);
 
@@ -131,7 +147,7 @@ public:
 	}
 
 private:
-	void OpenFile()
+	std::string OpenFile()
 	{
 		OPENFILENAME ofn;
 		char fileName[MAX_PATH] = "";
@@ -139,18 +155,18 @@ private:
 
 		ofn.lStructSize = sizeof(OPENFILENAME);
 		ofn.hwndOwner = NULL;
-		ofn.lpstrFilter = "XML Files (*.xml)\0*.xml\0";
+		ofn.lpstrFilter = "Meta Files (*.meta)\0*.meta\0";
 		ofn.lpstrFile = fileName;
 		ofn.nMaxFile = MAX_PATH;
 		ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
 		ofn.lpstrDefExt = "";
 		ofn.lpstrInitialDir = strdup(std::filesystem::current_path().string().c_str());
 
-		std::string fileNameStr;
+		std::string fileNameStr("");
 
 		if (GetOpenFileName(&ofn))
 			fileNameStr = fileName;
 
-		printf("Open file: %s\n", fileNameStr.c_str());
+		return fileNameStr;
 	}
 };
